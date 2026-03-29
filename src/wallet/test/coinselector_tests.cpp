@@ -7,6 +7,7 @@
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <random.h>
+#include <test/util/common.h>
 #include <test/util/setup_common.h>
 #include <util/translation.h>
 #include <wallet/coincontrol.h>
@@ -30,8 +31,6 @@ BOOST_FIXTURE_TEST_SUITE(coinselector_tests, WalletTestingSetup)
 // we repeat those tests this many times and only complain if all iterations of the test fail
 #define RANDOM_REPEATS 5
 
-typedef std::set<std::shared_ptr<COutput>> CoinSet;
-
 static const CoinEligibilityFilter filter_standard(1, 6, 0);
 static const CoinEligibilityFilter filter_confirmed(1, 1, 0);
 static const CoinEligibilityFilter filter_standard_extra(6, 6, 0);
@@ -45,7 +44,7 @@ static void add_coin(const CAmount& nValue, int nInput, SelectionResult& result)
     tx.nLockTime = nextLockTime++;        // so all transactions get different hashes
     COutput output(COutPoint(tx.GetHash(), nInput), tx.vout.at(nInput), /*depth=*/1, /*input_bytes=*/-1, /*solvable=*/true, /*safe=*/true, /*time=*/0, /*from_me=*/false, /*fees=*/ 0);
     OutputGroup group;
-    group.Insert(std::make_shared<COutput>(output), /*ancestors=*/ 0, /*descendants=*/ 0);
+    group.Insert(std::make_shared<COutput>(output), /*ancestors=*/ 0, /*cluster_count=*/ 0);
     result.AddInput(group);
 }
 
@@ -57,7 +56,7 @@ static void add_coin(const CAmount& nValue, int nInput, SelectionResult& result,
     tx.nLockTime = nextLockTime++;        // so all transactions get different hashes
     std::shared_ptr<COutput> coin = std::make_shared<COutput>(COutPoint(tx.GetHash(), nInput), tx.vout.at(nInput), /*depth=*/1, /*input_bytes=*/148, /*solvable=*/true, /*safe=*/true, /*time=*/0, /*from_me=*/false, fee);
     OutputGroup group;
-    group.Insert(coin, /*ancestors=*/ 0, /*descendants=*/ 0);
+    group.Insert(coin, /*ancestors=*/ 0, /*cluster_count=*/ 0);
     coin->long_term_fee = long_term_fee; // group.Insert() will modify long_term_fee, so we need to set it afterwards
     result.AddInput(group);
 }
@@ -117,7 +116,7 @@ static bool EquivalentResult(const SelectionResult& a, const SelectionResult& b)
 /** Check if this selection is equal to another one. Equal means same inputs (i.e same value and prevout) */
 static bool EqualResult(const SelectionResult& a, const SelectionResult& b)
 {
-    std::pair<CoinSet::iterator, CoinSet::iterator> ret = std::mismatch(a.GetInputSet().begin(), a.GetInputSet().end(), b.GetInputSet().begin(),
+    std::pair<OutputSet::iterator, OutputSet::iterator> ret = std::mismatch(a.GetInputSet().begin(), a.GetInputSet().end(), b.GetInputSet().begin(),
         [](const std::shared_ptr<COutput>& a, const std::shared_ptr<COutput>& b) {
             return a->outpoint == b->outpoint;
         });
@@ -131,7 +130,7 @@ inline std::vector<OutputGroup>& GroupCoins(const std::vector<COutput>& availabl
     for (auto& coin : available_coins) {
         static_groups.emplace_back();
         OutputGroup& group = static_groups.back();
-        group.Insert(std::make_shared<COutput>(coin), /*ancestors=*/ 0, /*descendants=*/ 0);
+        group.Insert(std::make_shared<COutput>(coin), /*ancestors=*/ 0, /*cluster_count=*/ 0);
         group.m_subtract_fee_outputs = subtract_fee_outputs;
     }
     return static_groups;
@@ -224,8 +223,8 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
         coin_control.m_allow_other_inputs = true;
         COutput select_coin = available_coins.All().at(0);
         coin_control.Select(select_coin.outpoint);
-        PreSelectedInputs selected_input;
-        selected_input.Insert(select_coin, coin_selection_params_bnb.m_subtract_fee_outputs);
+        CoinsResult selected_input;
+        selected_input.Add(OutputType::BECH32, select_coin);
         available_coins.Erase({available_coins.coins[OutputType::BECH32].begin()->outpoint});
 
         LOCK(wallet->cs_wallet);
@@ -255,8 +254,8 @@ BOOST_AUTO_TEST_CASE(bnb_search_test)
         coin_control.m_allow_other_inputs = true;
         COutput select_coin = available_coins.All().at(1); // pre select 9 coin
         coin_control.Select(select_coin.outpoint);
-        PreSelectedInputs selected_input;
-        selected_input.Insert(select_coin, coin_selection_params_bnb.m_subtract_fee_outputs);
+        CoinsResult selected_input;
+        selected_input.Add(OutputType::BECH32, select_coin);
         available_coins.Erase({(++available_coins.coins[OutputType::BECH32].begin())->outpoint});
         const auto result13 = SelectCoins(*wallet, available_coins, selected_input, 10 * CENT, coin_control, coin_selection_params_bnb);
         BOOST_CHECK(EquivalentResult(expected_result, *result13));
@@ -1292,7 +1291,7 @@ static util::Result<SelectionResult> select_coins(const CAmount& target, const C
     return result;
 }
 
-static bool has_coin(const CoinSet& set, CAmount amount)
+static bool has_coin(const OutputSet& set, CAmount amount)
 {
     return std::any_of(set.begin(), set.end(), [&](const auto& coin) { return coin->GetEffectiveValue() == amount; });
 }

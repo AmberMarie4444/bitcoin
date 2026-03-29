@@ -63,7 +63,7 @@ class NetTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 2
         self.extra_args = [
-            ["-minrelaytxfee=0.00001000", "-deprecatedrpc=startingheight"],
+            ["-minrelaytxfee=0.00001000"],
             ["-minrelaytxfee=0.00000500"],
         ]
         # Specify a non-working proxy to make sure no actual connections to public IPs are attempted
@@ -174,7 +174,6 @@ class NetTest(BitcoinTestFramework):
                 "services": "0000000000000000",
                 "servicesnames": [],
                 "session_id": "" if not self.options.v2transport else no_version_peer.v2_state.peer['session_id'].hex(),
-                "startingheight": -1,
                 "subver": "",
                 "synced_blocks": -1,
                 "synced_headers": -1,
@@ -418,8 +417,12 @@ class NetTest(BitcoinTestFramework):
 
         self.log.info("Test sendmsgtopeer")
         self.log.debug("Send a valid message")
+        msg_bytes_before = node.getpeerinfo()[0]["bytesrecv_per_msg"]["pong"]
+
         with self.nodes[1].assert_debug_log(expected_msgs=["received: addr"]):
             node.sendmsgtopeer(peer_id=0, msg_type="addr", msg="FFFFFF")
+            node.ping()
+            self.wait_until(lambda: node.getpeerinfo()[0]["bytesrecv_per_msg"]["pong"] > msg_bytes_before)
 
         self.log.debug("Test error for sending to non-existing peer")
         assert_raises_rpc_error(-1, "Error: Could not send message to peer", node.sendmsgtopeer, peer_id=100, msg_type="addr", msg="FF")

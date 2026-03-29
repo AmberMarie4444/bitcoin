@@ -47,7 +47,7 @@ static void WalletTxToJSON(const CWallet& wallet, const CWalletTx& wtx, UniValue
         mempool_conflicts.push_back(mempool_conflict.GetHex());
     entry.pushKV("mempoolconflicts", std::move(mempool_conflicts));
     entry.pushKV("time", wtx.GetTxTime());
-    entry.pushKV("timereceived", int64_t{wtx.nTimeReceived});
+    entry.pushKV("timereceived", wtx.nTimeReceived);
 
     // Add opt-in RBF status
     std::string rbfStatus = "no";
@@ -705,7 +705,7 @@ RPCHelpMan gettransaction()
                         {RPCResult::Type::STR_HEX, "hex", "Raw data for transaction"},
                         {RPCResult::Type::OBJ, "decoded", /*optional=*/true, "The decoded transaction (only present when `verbose` is passed)",
                         {
-                            DecodeTxDoc(/*txid_field_doc=*/"The transaction id", /*wallet=*/true),
+                            TxDoc({.wallet = true}),
                         }},
                         RESULT_LAST_PROCESSED_BLOCK,
                     })
@@ -905,8 +905,7 @@ RPCHelpMan rescanblockchain()
         throw JSONRPCError(RPC_MISC_ERROR, "Rescan failed. Potentially corrupted data files.");
     case CWallet::ScanResult::USER_ABORT:
         throw JSONRPCError(RPC_MISC_ERROR, "Rescan aborted.");
-        // no default case, so the compiler can warn about missing cases
-    }
+    } // no default case, so the compiler can warn about missing cases
     UniValue response(UniValue::VOBJ);
     response.pushKV("start_height", start_height);
     response.pushKV("stop_height", result.last_scanned_height ? *result.last_scanned_height : UniValue());

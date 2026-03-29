@@ -161,7 +161,6 @@ static RPCHelpMan getpeerinfo()
                     {RPCResult::Type::BOOL, "inbound", "Inbound (true) or Outbound (false)"},
                     {RPCResult::Type::BOOL, "bip152_hb_to", "Whether we selected peer as (compact blocks) high-bandwidth peer"},
                     {RPCResult::Type::BOOL, "bip152_hb_from", "Whether peer selected us as (compact blocks) high-bandwidth peer"},
-                    {RPCResult::Type::NUM, "startingheight", /*optional=*/true, "(DEPRECATED, returned only if config option -deprecatedrpc=startingheight is passed) The starting height (block) of the peer"},
                     {RPCResult::Type::NUM, "presynced_headers", "The current height of header pre-synchronization with this peer, or -1 if no low-work sync is in progress"},
                     {RPCResult::Type::NUM, "synced_headers", "The last header we have in common with this peer"},
                     {RPCResult::Type::NUM, "synced_blocks", "The last block we have in common with this peer"},
@@ -235,7 +234,7 @@ static RPCHelpMan getpeerinfo()
         }
         obj.pushKV("network", GetNetworkName(stats.m_network));
         if (stats.m_mapped_as != 0) {
-            obj.pushKV("mapped_as", uint64_t(stats.m_mapped_as));
+            obj.pushKV("mapped_as", stats.m_mapped_as);
         }
         ServiceFlags services{statestats.their_services};
         obj.pushKV("services", strprintf("%016x", services));
@@ -268,9 +267,6 @@ static RPCHelpMan getpeerinfo()
         obj.pushKV("inbound", stats.fInbound);
         obj.pushKV("bip152_hb_to", stats.m_bip152_highbandwidth_to);
         obj.pushKV("bip152_hb_from", stats.m_bip152_highbandwidth_from);
-        if (IsDeprecatedRPCEnabled("startingheight")) {
-            obj.pushKV("startingheight", statestats.m_starting_height);
-        }
         obj.pushKV("presynced_headers", statestats.presync_height);
         obj.pushKV("synced_headers", statestats.nSyncHeight);
         obj.pushKV("synced_blocks", statestats.nCommonHeight);
@@ -617,14 +613,17 @@ static UniValue GetNetworksInfo()
     for (int n = 0; n < NET_MAX; ++n) {
         enum Network network = static_cast<enum Network>(n);
         if (network == NET_UNROUTABLE || network == NET_INTERNAL) continue;
-        Proxy proxy;
         UniValue obj(UniValue::VOBJ);
-        GetProxy(network, proxy);
         obj.pushKV("name", GetNetworkName(network));
         obj.pushKV("limited", !g_reachable_nets.Contains(network));
         obj.pushKV("reachable", g_reachable_nets.Contains(network));
-        obj.pushKV("proxy", proxy.IsValid() ? proxy.ToString() : std::string());
-        obj.pushKV("proxy_randomize_credentials", proxy.m_tor_stream_isolation);
+        if (const auto proxy = GetProxy(network)) {
+            obj.pushKV("proxy", proxy->ToString());
+            obj.pushKV("proxy_randomize_credentials", proxy->m_tor_stream_isolation);
+        } else {
+            obj.pushKV("proxy", std::string());
+            obj.pushKV("proxy_randomize_credentials", false);
+        }
         networks.push_back(std::move(obj));
     }
     return networks;
@@ -958,7 +957,7 @@ static RPCHelpMan getnodeaddresses()
 
     for (const CAddress& addr : vAddr) {
         UniValue obj(UniValue::VOBJ);
-        obj.pushKV("time", int64_t{TicksSinceEpoch<std::chrono::seconds>(addr.nTime)});
+        obj.pushKV("time", TicksSinceEpoch<std::chrono::seconds>(addr.nTime));
         obj.pushKV("services", static_cast<std::underlying_type_t<decltype(addr.nServices)>>(addr.nServices));
         obj.pushKV("address", addr.ToStringAddr());
         obj.pushKV("port", addr.GetPort());
@@ -1127,7 +1126,7 @@ UniValue AddrmanEntryToJSON(const AddrInfo& info, const CConnman& connman)
     }
     ret.pushKV("port", info.GetPort());
     ret.pushKV("services", static_cast<std::underlying_type_t<decltype(info.nServices)>>(info.nServices));
-    ret.pushKV("time", int64_t{TicksSinceEpoch<std::chrono::seconds>(info.nTime)});
+    ret.pushKV("time", TicksSinceEpoch<std::chrono::seconds>(info.nTime));
     ret.pushKV("network", GetNetworkName(info.GetNetClass()));
     ret.pushKV("source", info.source.ToStringAddr());
     ret.pushKV("source_network", GetNetworkName(info.source.GetNetClass()));

@@ -13,6 +13,8 @@ define $(package)_set_vars
   $(package)_config_opts += -DBOOST_INSTALL_LAYOUT=system
   $(package)_config_opts += -DBUILD_TESTING=OFF
   $(package)_config_opts += -DCMAKE_DISABLE_FIND_PACKAGE_ICU=ON
+  # Install to a unique path to prevent accidental inclusion via other dependencies' -I flags.
+  $(package)_config_opts += -DCMAKE_INSTALL_INCLUDEDIR=$(package)/include
 endef
 
 define $(package)_config_cmds
@@ -21,4 +23,8 @@ endef
 
 define $(package)_stage_cmds
   $(MAKE) DESTDIR=$($(package)_staging_dir) install
+endef
+
+define $(package)_postprocess_cmds
+  rm -rf share
 endef
